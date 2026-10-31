@@ -34,8 +34,8 @@ Essa é a forma mais simples: não precisa instalar Python, criar venv nem insta
 ### 1. Clonar o repositório
 
 ```bash
-git clone https://github.com/Pietro2820/projeto-a3-Garantia-da-Qualidade-de-Software-2026.2
-cd projeto-a3-Garantia-da-Qualidade-de-Software-2026.2
+git clone https://github.com/rafaellfsouza/edustream-projeto-a3-gqs-2026.2
+cd edustream-projeto-a3-gqs-2026.2
 ```
 
 ### 2. Criar o arquivo `.env`
@@ -65,8 +65,8 @@ Use essa opção se quiser rodar o código diretamente na sua máquina (sem cont
 ### 1. Clonar o repositório
 
 ```bash
-git clone https://github.com/Pietro2820/projeto-a3-Garantia-da-Qualidade-de-Software-2026.2
-cd projeto-a3-Garantia-da-Qualidade-de-Software-2026.2
+git clone https://github.com/rafaellfsouza/edustream-projeto-a3-gqs-2026.2
+cd edustream-projeto-a3-gqs-2026.2
 ```
 
 ### 2. Criar e ativar o ambiente virtual
@@ -165,12 +165,65 @@ O projeto Supabase já existe — com ele configurado, **todo o time e o player 
 
 > Sem credenciais no `.env`, tudo continua funcionando localmente (banco JSON) — inclusive os testes e a demo.
 
+## Autenticação — login de alunos e professores
+
+A plataforma tem contas de usuário (`app/auth` no backend, `login.html` no player) e é o login que liga **os vídeos às recomendações de cada usuário**:
+
+```
+http://localhost:8000/player/login.html   ← entrar / criar conta (aluno ou professor)
+```
+
+### Como funciona o fluxo
+
+```
+POST /auth/registrar ──► cria a conta (perfil: aluno | professor) e devolve token
+POST /auth/login ──────► valida e-mail + senha (hash PBKDF2) e devolve token
+        │  token assinado (HMAC-SHA256, expira em 12h) guardado no localStorage
+        ▼
+POST /watch + Authorization: Bearer ──► view atribuída ao usuário LOGADO
+GET  /recomendacoes/me ──► recomendações pessoais (Jaccard sobre as tags do
+                           histórico dele) — home e sidebar "Recomendados para você"
+GET  /auth/usuarios ──► área do PROFESSOR: contas cadastradas (aluno leva 403)
+```
+
+Sem login nada quebra: o player continua funcionando em modo anônimo (o
+`POST /watch` aceita o `user_id` opcional de sempre e a home mostra só o
+catálogo). Com login, cada visualização alimenta o histórico **daquela conta**
+e a home/watch page exibem o bloco **"Recomendados para você"**.
+
+### Onde as contas ficam guardadas
+
+Mesma política dos vídeos (`app/database/videos.py`):
+
+| Cenário | Armazenamento |
+| --- | --- |
+| `SUPABASE_URL`/`SUPABASE_KEY` no `.env` | tabela `usuarios` (rode o `supabase/schema.sql` no SQL Editor) |
+| Sem credenciais (dev) | JSON local `data/usuarios.json` (pasta fora do Git) |
+
+A senha **nunca** é gravada em texto claro — só o hash PBKDF2-HMAC-SHA256 com
+sal aleatório. O token de sessão é assinado com `AUTH_SECRET_KEY`; em dev, sem
+a variável, usa-se um segredo público de desenvolvimento (o backend avisa nos
+logs). **Defina `AUTH_SECRET_KEY` no `.env` antes de qualquer deployment** —
+gere um valor com `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
+
+### Rotas da API (todas em `/docs`)
+
+| Rota | Quem chama | O que faz |
+| --- | --- | --- |
+| `POST /auth/registrar` | login.html (aba Criar conta) | cria conta e inicia a sessão |
+| `POST /auth/login` | login.html (aba Entrar) | valida credenciais e inicia a sessão |
+| `GET /auth/me` | menu de perfil | dados do usuário logado (401 sem token) |
+| `GET /auth/usuarios` | professor | lista as contas (403 para aluno) |
+| `GET /recomendacoes/me` | home/watch page | recomendações do usuário logado |
+| `POST /watch` | player | com Bearer, atribui a view ao usuário real |
+
 ## Frontend ↔ Backend (o player conversando com a API)
 
 Com a API no ar (`uvicorn app.main:app --reload`), o backend **também serve o player** — não precisa de outro servidor:
 
 ```
 http://localhost:8000/player/home.html  ← home (catálogo que vem do banco)
+http://localhost:8000/player/login.html ← login/cadastro (alunos e professores)
 http://localhost:8000/player/           ← watch page (toca o 1º vídeo pronto)
 http://localhost:8000/docs              ← documentação da API (Swagger)
 http://localhost:8000/videos/...        ← HLS (master.m3u8, segmentos) e thumbnails
@@ -213,7 +266,9 @@ GET /media/{id} ───► master.m3u8/thumbnail/segmentos existem no disco?
 GET /catalogo?prontos=1, /trending, /videos/{id}/relacionados ──► home + cards
 GET /catalogo/{id} ──► watch page (index.html?video={id})
 GET /videos/{id}/master.m3u8 ──► HLS.js toca o vídeo adaptativo
-POST /watch ──► alimenta o ranking e as recomendações do usuário
+POST /auth/registrar, POST /auth/login ──► sessão (token Bearer no localStorage)
+POST /watch (+Bearer) ──► ranking e histórico do usuário LOGADO
+GET /recomendacoes/me ──► "Recomendados para você" (home + watch page)
 ```
 
 ## Modo rápido: subir tudo com um comando só
@@ -291,17 +346,19 @@ projeto-a3/
 ├── .github/workflows/ci.yml       # Pipeline: pytest (back) + Jest (player)
 ├── app/
 │   ├── main.py                    # FastAPI: rotas + CORS + /player + /videos
+│   ├── auth/                      # Login: contas aluno/professor, PBKDF2, tokens
 │   ├── upload/                    # POST /upload (salva arquivo e metadados, enfileira)
 │   ├── queue/                     # Celery: tasks, broker e status em Redis
 │   ├── transcoding/               # FFmpeg: HLS multi-resolução + thumbnail
-│   ├── recommendations/           # Jaccard por tags + views (/trending, /relacionados)
+│   ├── recommendations/           # Jaccard por tags + views (/trending, /relacionados, /recomendacoes/me)
 │   ├── status/                    # GET /status/{video_id} (Redis, fallback banco)
 │   └── database/                  # Supabase + fallback local (data/videos.json)
 ├── player-adaptativo/player-adaptativo/   # Frontend (HLS.js, servido em /player/)
-│   ├── home.html                  # Catálogo (grade + busca + upload)
+│   ├── home.html                  # Catálogo (grade + busca + upload + recomendados)
 │   ├── index.html                 # Página do player (watch page)
+│   ├── login.html                 # Login/cadastro (alunos e professores)
 │   ├── config.js                  # Origem da API (mesma origem ou localhost:8000)
-│   └── js/                        # api.js, catalog.js, player.js, home.js, ...
+│   └── js/                        # api.js, auth.js, login.js, catalog.js, player.js, home.js, ...
 ├── scripts/
 │   ├── demo_completo.py           # Demo E2E: upload → fila → HLS → trending
 │   ├── seed_e2e.py                # Cenário de teste do player (sem Redis/worker)

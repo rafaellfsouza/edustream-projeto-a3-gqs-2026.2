@@ -46,3 +46,39 @@ create index if not exists videos_criado_em_idx  on public.videos (criado_em des
 -- específicas (ex.: leitura pública, escrita só com service_role).
 -- ----------------------------------------------------------------------------
 alter table public.videos disable row level security;
+
+-- ============================================================================
+-- Schema da tabela `usuarios` — autenticação de alunos e professores
+--
+-- MESMO procedimento: SQL Editor → New query → colar → Run (idempotente).
+-- É nesta tabela que o POST /auth/registrar grava as contas quando o backend
+-- está com SUPABASE_URL/SUPABASE_KEY configuradas. Sem as credenciais, o
+-- módulo de autenticação usa o JSON local (data/usuarios.json) e esta tabela
+-- nem é consultada.
+--
+-- ATENÇÃO: `senha_hash` guarda o hash PBKDF2 (app/auth/passwords.py) — a
+-- senha em texto claro NUNCA chega ao banco.
+-- ============================================================================
+
+create table if not exists public.usuarios (
+    usuario_id   uuid primary key default gen_random_uuid(),
+
+    nome         text not null,
+
+    -- identidade de login: única e sempre minúscula (normalizada no backend).
+    email        text not null unique,
+
+    senha_hash   text not null,
+
+    -- aluno assiste e recebe recomendações; professor ainda vê GET /auth/usuarios.
+    tipo_usuario text not null default 'aluno'
+                 check (tipo_usuario in ('aluno', 'professor')),
+
+    criado_em    timestamptz not null default now()
+);
+
+create index if not exists usuarios_email_idx on public.usuarios (email);
+
+-- Mesmo aviso da tabela videos: RLS desligado para a chave anon operar via
+-- backend (supabase-py). Em produção com dados reais, habilite RLS.
+alter table public.usuarios disable row level security;
