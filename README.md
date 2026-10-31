@@ -150,12 +150,16 @@ pytest -v
 Com o Supabase configurado, **todo o time e o player passam a ver o mesmo catálogo e as mesmas contas de usuário** (os fallbacks locais `data/videos.json` e `data/usuarios.json` se desligam sozinhos). Uma vez por máquina:
 
 1. **Criar as tabelas**: painel do Supabase → **SQL Editor** → cole e execute o conteúdo de [`supabase/schema.sql`](supabase/schema.sql) (idempotente: cria `videos` **e** `usuarios` + índices — a segunda é a do login de alunos/professores).
-2. **Copiar as credenciais**: painel → **Settings → API** → `Project URL` e a chave (`anon public` serve para dev) → colar no `.env`:
+2. **Copiar as credenciais**: painel → **Settings → API Keys** (ou botão **Connect** no topo do projeto):
+   - **Project URL**: `https://xxxx.supabase.co` (também aparece em Settings → General);
+   - **Chave**: use a **publishable** (`sb_publishable_...`, aba *Publishable and secret API keys*). Projetos antigos ainda mostram a chave `anon` (JWT `eyJ...`) na aba *Legacy* — as duas funcionam, mas a `anon` será descontinuada no fim de 2026.
+
+   Cole no `.env`:
    ```
    SUPABASE_URL=https://xxxx.supabase.co
-   SUPABASE_KEY=eyJ...
+   SUPABASE_KEY=sb_publishable_...
    ```
-   O `.env` é carregado automaticamente no import do pacote `app` (não precisa exportar na mão).
+   O `.env` é carregado automaticamente no import do pacote `app` (não precisa exportar na mão). **Nunca** use a chave `sb_secret_...`/`service_role` no `.env` de dev compartilhado — ela bypassa todas as proteções do banco.
 3. **Conferir a ligação**:
    ```bash
    python scripts/verificar_supabase.py
