@@ -66,7 +66,7 @@ def dica_de_erro(exc: Exception) -> str:
 
 def checar_tabela_videos(client) -> bool:
     """insert → select → delete na tabela `videos` (contrato #2)."""
-    video_id = f"smoke-{uuid.uuid4().hex[:8]}"
+    video_id = str(uuid.uuid4())  # a coluna é uuid no Postgres
     registro = {
         "video_id": video_id,
         "titulo": "[smoke] registro de teste — pode apagar",

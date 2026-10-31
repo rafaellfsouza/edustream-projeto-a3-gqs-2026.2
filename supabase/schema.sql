@@ -46,6 +46,7 @@ create index if not exists videos_criado_em_idx  on public.videos (criado_em des
 -- específicas (ex.: leitura pública, escrita só com service_role).
 -- ----------------------------------------------------------------------------
 alter table public.videos disable row level security;
+grant all on public.videos to anon, authenticated;
 
 -- ============================================================================
 -- Schema da tabela `usuarios` — autenticação de alunos e professores
@@ -82,3 +83,4 @@ create index if not exists usuarios_email_idx on public.usuarios (email);
 -- Mesmo aviso da tabela videos: RLS desligado para a chave anon operar via
 -- backend (supabase-py). Em produção com dados reais, habilite RLS.
 alter table public.usuarios disable row level security;
+grant all on public.usuarios to anon, authenticated;
