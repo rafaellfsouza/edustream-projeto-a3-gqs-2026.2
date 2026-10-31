@@ -13,11 +13,12 @@
  * A busca também chega pela URL (home.html?q=frações), que é para onde a
  * watch page manda o formulário de pesquisa do topo.
  */
-import { consultarCatalogo } from "./catalog.js";
+import { consultarCatalogo, consultarRecomendacoesPessoais } from "./catalog.js";
 import { escapeHtml } from "./recommendations.js";
 import { iniciarUiUpload } from "./upload.js";
 import { API_BASE_URL } from "./api.js";
 import { definirParametro, parametro } from "./busca.js";
+import { iniciarUiPerfil, usuarioAtual } from "./auth.js";
 
 /** Thumbnail padrão quando o vídeo não tem (ou a dele dá 404 no servidor). */
 const THUMBNAIL_PADRAO = "./assets/default-thumbnail.svg";
@@ -32,6 +33,9 @@ const elements = {
   count: document.querySelector("#homeCount"),
   searchForm: document.querySelector("#searchForm"),
   searchInput: document.querySelector("#searchInput"),
+  recomendadosSection: document.querySelector("#recomendadosSection"),
+  recomendadosGrid: document.querySelector("#recomendadosGrid"),
+  recomendadosCount: document.querySelector("#recomendadosCount"),
 };
 
 let debounce = null;
@@ -114,6 +118,35 @@ async function carregar(termo = "") {
   return videos;
 }
 
+/**
+ * Bloco "Recomendados para você" — a integração login ↔ recomendações.
+ *
+ * Só aparece com sessão ativa (login.html): consulta
+ * GET /recomendacoes/{usuario_id}, onde o backend cruza as tags do histórico
+ * de visualizações do usuário (POST /watch autenticado) com o catálogo.
+ * Anônimo ou sem histórico → seção continua oculta, sem estados vazios.
+ */
+async function carregarRecomendacoes() {
+  const section = elements.recomendadosSection;
+  if (!section || !usuarioAtual()) {
+    section?.classList.add("hidden");
+    return [];
+  }
+
+  const { itens } = await consultarRecomendacoesPessoais();
+
+  if (!itens.length) {
+    section.classList.add("hidden");
+    return itens;
+  }
+
+  section.classList.remove("hidden");
+  elements.recomendadosCount.textContent =
+    `${itens.length} vídeo${itens.length === 1 ? "" : "s"}`;
+  renderHome(elements.recomendadosGrid, itens);
+  return itens;
+}
+
 elements.searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
   buscarPeloFormulario();
@@ -151,6 +184,10 @@ if (termoInicial) {
   elements.searchInput.value = termoInicial;
 }
 
-carregar(termoInicial);
+// Menu de perfil (👤) no topo: mostra a sessão ativa ou os links de login.
+iniciarUiPerfil();
 
-export { buscarPeloFormulario, carregar };
+carregar(termoInicial);
+carregarRecomendacoes();
+
+export { buscarPeloFormulario, carregar, carregarRecomendacoes };

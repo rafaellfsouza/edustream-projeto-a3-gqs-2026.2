@@ -57,6 +57,17 @@
   </div>
 
   <main class="page home-page">
+    <!-- Recomendações pessoais: visível só com login ativo e histórico de
+         visualizações (js/home.js consulta GET /recomendacoes/{usuario_id}). -->
+    <section class="recomendados-section hidden" id="recomendadosSection"
+             aria-labelledby="recomendadosTitle">
+      <div class="section-title-row home-title-row">
+        <h2 id="recomendadosTitle">Recomendados para você</h2>
+        <span class="home-count" id="recomendadosCount"></span>
+      </div>
+      <div class="video-grid home-grid" id="recomendadosGrid"></div>
+    </section>
+
     <div class="section-title-row home-title-row">
       <h2 id="homeTitle">Catálogo</h2>
       <span class="home-count" id="homeCount"></span>

@@ -12,8 +12,9 @@
  *   É o padrão "enhancement progressivo": renderiza o demo na hora, troca por
  *   dados reais quando a API responde.
  */
-import { getCatalogo, getRelatedVideos, getTrending, getVideo, registerWatch } from "./api.js";
+import { getCatalogo, getRecommendations, getRelatedVideos, getTrending, getVideo, registerWatch } from "./api.js";
 import { renderRecommendations, renderSidebar } from "./recommendations.js";
+import { usuarioAtual } from "./auth.js";
 
 /**
  * Resultado de uma consulta ao catálogo.
@@ -126,6 +127,30 @@ export async function consultarEmAlta() {
 }
 
 /**
+ * Recomendações PESSOAIS do usuário logado — a integração login ↔ vídeos.
+ *
+ * GET /recomendacoes/{usuario_id}: o backend cruza as tags do histórico de
+ * visualizações (alimentado pelo POST /watch quando o usuário está logado)
+ * com o catálogo pronto. Sem sessão ativa devolve lista vazia com `ok=true`
+ * (não é falha — é só um visitante anônimo).
+ */
+export async function consultarRecomendacoesPessoais() {
+  const usuario = usuarioAtual();
+  if (!usuario?.usuario_id) return resultadoDaApi([], true);
+
+  try {
+    const corpo = await getRecommendations(usuario.usuario_id);
+    return resultadoDaApi(
+      (corpo?.recomendacoes ?? []).map(paraCard).filter(Boolean),
+      true
+    );
+  } catch (error) {
+    console.info("Recomendações pessoais indisponíveis:", error.message);
+    return resultadoDaApi([], false);
+  }
+}
+
+/**
  * Catálogo completo de vídeos prontos (home estilo YouTube + busca).
  * Devolve [] se a API falhar — a home mostra o estado vazio explicando o que fazer.
  */
@@ -214,18 +239,26 @@ export async function registrarVisualizacao(videoId, userId) {
  *
  * Só redesenha quando vem conteúdo — assim, com o backend desligado, a página
  * continua exatamente como estava (com os demos).
+ *
+ * `recomendadosContainer` (opcional): bloco "Recomendados para você" da
+ * watch page. Só é preenchido com sessão ativa (login.html) — o histórico do
+ * usuário logado alimenta GET /recomendacoes/{usuario_id} no backend.
  */
-export async function atualizarCatalogoDaApi({ relatedContainer, sidebarContainer, videoId }) {
+export async function atualizarCatalogoDaApi({ relatedContainer, sidebarContainer, recomendadosContainer, videoId }) {
   // Sem video_id (abriu a watch page direto, sem ?video=) não há "relacionados"
   // o que consultar: a grade inicial vem do CATÁLOGO do banco — que é a lista
   // completa de vídeos prontos, e ainda permite ao player dar play no primeiro.
-  const [relacionadosRes, emAltaRes] = await Promise.all([
+  const [relacionadosRes, emAltaRes, recomendadosRes] = await Promise.all([
     videoId ? consultarRelacionados(videoId) : consultarGradeInicial(),
     consultarEmAlta(),
+    recomendadosContainer
+      ? consultarRecomendacoesPessoais()
+      : Promise.resolve(resultadoDaApi([], true)),
   ]);
 
   const relacionados = relacionadosRes.itens;
   const emAlta = emAltaRes.itens;
+  const recomendados = recomendadosRes.itens;
 
   if (relacionados.length && relatedContainer) {
     renderRecommendations(relatedContainer, relacionados);
@@ -235,9 +268,18 @@ export async function atualizarCatalogoDaApi({ relatedContainer, sidebarContaine
     renderSidebar(sidebarContainer, emAlta);
   }
 
+  if (recomendadosContainer) {
+    if (recomendados.length) {
+      renderSidebar(recomendadosContainer, recomendados);
+    } else {
+      recomendadosContainer.replaceChildren();
+    }
+  }
+
   return {
     relacionados,
     emAlta,
+    recomendados,
     apiRespondeu: relacionadosRes.ok || emAltaRes.ok,
   };
 }

@@ -6,11 +6,15 @@
  * player é servido pelo próprio backend (/player/), a API está na mesma
  * origem; senão, assume o uvicorn padrão em localhost:8000.
  */
+import { tokenAtual } from "./auth.js";
+
 const API_BASE_URL =
   window.PLAYER_CONFIG?.API_BASE_URL ||
   (window.location.pathname.startsWith("/player")
     ? window.location.origin
     : "http://localhost:8000");
+
+export { API_BASE_URL };
 
 /**
  * Erro de HTTP da API com o status anexado (`error.status`).
@@ -18,6 +22,10 @@ const API_BASE_URL =
  * O número importa para o player decidir o que dizer: 404 = vídeo não existe,
  * 503 = banco sem credenciais, 5xx = backend com problema. Sem ele, tudo
  * viraria a mesma mensagem genérica.
+ *
+ * `detail` traz a mensagem legível do backend quando o corpo da resposta é um
+ * JSON com esse campo (ex.: "E-mail ou senha incorretos." no login) — o front
+ * mostra isso em vez do texto genérico.
  */
 export class ApiError extends Error {
   constructor(status, caminho) {
@@ -25,20 +33,34 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
     this.caminho = caminho;
+    this.detail = null;
   }
 }
 
 async function requestJson(path, options = {}) {
+  // Sessão ativa → anexa o Bearer automaticamente (rotas de autenticação,
+  // POST /watch e GET /recomendacoes/me usam; as demais ignoram o cabeçalho).
+  const token = tokenAtual();
+  const headers = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.headers || {}),
+  };
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    },
-    ...options
+    ...options,
+    headers,
   });
 
   if (!response.ok) {
-    throw new ApiError(response.status, path);
+    const erro = new ApiError(response.status, path);
+    try {
+      const corpo = await response.json();
+      if (typeof corpo?.detail === "string") erro.detail = corpo.detail;
+    } catch {
+      // corpo não era JSON: mantém a mensagem genérica
+    }
+    throw erro;
   }
 
   return response.json();
@@ -142,4 +164,40 @@ export function resolveMediaUrl(url) {
   return url;
 }
 
-export { API_BASE_URL };
+// ---------------------------------------------------------------------------
+// Autenticação — módulo app/auth do backend (contratos em app/auth/router.py)
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /auth/registrar — cria conta (tipoUsuario: "aluno" | "professor").
+ * Devolve {usuario, token}: a chamada já deixa a sessão pronta para salvar.
+ */
+export async function registrarUsuario({ nome, email, senha, tipoUsuario = "aluno" }) {
+  return requestJson("/auth/registrar", {
+    method: "POST",
+    body: JSON.stringify({
+      nome,
+      email,
+      senha,
+      tipo_usuario: tipoUsuario,
+    }),
+  });
+}
+
+/** POST /auth/login — devolve {usuario, token}. */
+export async function fazerLogin({ email, senha }) {
+  return requestJson("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, senha }),
+  });
+}
+
+/** GET /auth/me — valida o token da sessão e devolve {usuario}. */
+export async function obterPerfil() {
+  return requestJson("/auth/me");
+}
+
+/** GET /auth/usuarios — área do professor (o backend barra alunos com 403). */
+export async function listarUsuarios() {
+  return requestJson("/auth/usuarios");
+}

@@ -40,7 +40,9 @@ window.PLAYER_CONFIG = window.PLAYER_CONFIG || {};
 
   // ---------------------------------------------------------------------
   // Quem assiste (alimenta POST /watch → /trending e /recomendacoes).
-  // Troque pelo usuário real quando a autenticação entrar no projeto.
+  // Este é o usuário ANÔNIMO de fallback: com a autenticação ativa
+  // (login.html), js/auth.js assume — o id do usuário logado tem prioridade
+  // sobre este valor no POST /watch e nas recomendações pessoais.
   // ---------------------------------------------------------------------
   config.USER_ID = config.USER_ID || "demo-user";
 

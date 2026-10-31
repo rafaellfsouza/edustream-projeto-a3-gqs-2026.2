@@ -719,3 +719,284 @@ a.home-card .card-content {
 }
 
 .player-error a:hover { background: var(--surface-2); }
+
+/* ---------------------------------------------------------------------------
+   Autenticação — login.html (abas Entrar/Criar conta), menu de perfil da
+   topbar e selo de tipo (aluno/professor). Segue as variáveis do tema
+   (--surface, --border, --accent) para manter a cara do EduStream.
+   --------------------------------------------------------------------------- */
+
+.auth-topbar-hint {
+  color: var(--muted);
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-page {
+  display: flex;
+  justify-content: center;
+  padding-top: 48px;
+  padding-bottom: 64px;
+}
+
+.auth-card {
+  width: min(460px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 26px 28px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.auth-title {
+  margin: 0;
+  font-size: 22px;
+  text-align: center;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 5px;
+}
+
+.auth-tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 7px;
+  padding: 9px 12px;
+  font-weight: 700;
+  transition: background .15s ease, color .15s ease;
+}
+
+.auth-tab:hover { color: var(--text); }
+
+.auth-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.auth-form label small { color: var(--muted); opacity: .8; }
+
+.auth-form input {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.auth-form input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.auth-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.auth-error,
+.auth-success {
+  font-size: 13.5px;
+  line-height: 1.5;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0;
+}
+
+.auth-error {
+  color: #ff8f8f;
+  background: rgba(255, 61, 61, .08);
+  border: 1px solid rgba(255, 61, 61, .35);
+}
+
+.auth-success {
+  color: #7dde92;
+  background: rgba(125, 222, 146, .08);
+  border: 1px solid rgba(125, 222, 146, .35);
+}
+
+.auth-submit {
+  padding: 11px 16px;
+  font-size: 15px;
+}
+
+.auth-hint {
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.auth-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* Seleção de perfil (aluno/professor) — radio cards do cadastro. */
+.auth-perfis {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auth-perfis legend {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.perfil-card {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color .15s ease;
+}
+
+.perfil-card:hover { border-color: var(--muted); }
+
+.perfil-card input { accent-color: var(--accent); margin-top: 3px; }
+
+.perfil-card:has(input:checked) {
+  border-color: var(--accent);
+  background: rgba(255, 61, 61, .06);
+}
+
+.perfil-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.perfil-card-body small { color: var(--muted); font-size: 12.5px; }
+
+/* Menu de perfil — dropdown do botão 👤 na topbar (js/auth.js). */
+.profile-wrapper { position: relative; }
+
+#profileButton.profile-avatar {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-menu {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 40;
+  width: min(280px, calc(100vw - 40px));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .45);
+}
+
+.profile-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.profile-identity strong { font-size: 14px; }
+.profile-identity span { color: var(--muted); font-size: 12.5px; }
+
+.profile-action {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 9px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.profile-action:hover { border-color: var(--muted); }
+
+/* Selo do perfil — aluno (azul) x professor (âmbar). */
+.role-badge {
+  align-self: flex-start;
+  margin-top: 4px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.role-badge.aluno {
+  color: #8ec9ff;
+  background: rgba(94, 164, 255, .12);
+  border: 1px solid rgba(94, 164, 255, .4);
+}
+
+.role-badge.professor {
+  color: #ffd28e;
+  background: rgba(255, 176, 64, .12);
+  border: 1px solid rgba(255, 176, 64, .4);
+}
+
+/* Bloco "Recomendados para você" — home e sidebar da watch page. */
+.recomendados-section { margin-bottom: 34px; }
+
+#recomendadosVideos:not(:empty) { margin-bottom: 18px; }

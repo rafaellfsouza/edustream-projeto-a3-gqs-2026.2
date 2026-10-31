@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Entrar ou criar conta na plataforma EduStream — alunos e professores">
+  <title>EduStream — Entrar</title>
+  <link rel="stylesheet" href="./css/player.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./home.html" aria-label="EduStream — voltar ao catálogo">Edu<span>Stream</span></a>
+    <span class="auth-topbar-hint">Assista às aulas e receba recomendações do seu perfil.</span>
+  </header>
+
+  <main class="page auth-page">
+    <section class="auth-card" aria-labelledby="authTitle">
+      <h1 id="authTitle" class="auth-title">Acessar a plataforma</h1>
+
+      <!-- Abas Entrar / Criar conta (js/login.js alterna os formulários). -->
+      <div class="auth-tabs" role="tablist" aria-label="Acesso ou cadastro">
+        <button type="button" class="auth-tab active" id="tabLogin" role="tab"
+                aria-selected="true" aria-controls="formLogin">Entrar</button>
+        <button type="button" class="auth-tab" id="tabRegistro" role="tab"
+                aria-selected="false" aria-controls="formRegistro">Criar conta</button>
+      </div>
+
+      <!-- ======================= LOGIN ======================= -->
+      <form class="auth-form" id="formLogin" novalidate>
+        <p class="auth-subtitle">
+          Entre com e-mail e senha para continuar de onde parou — suas
+          recomendações pessoais ficam no ar.
+        </p>
+
+        <label for="loginEmail">E-mail
+          <input type="email" id="loginEmail" name="email" autocomplete="username"
+                 placeholder="voce@exemplo.com" required>
+        </label>
+
+        <label for="loginSenha">Senha
+          <input type="password" id="loginSenha" name="senha" autocomplete="current-password"
+                 placeholder="••••••••" required>
+        </label>
+
+        <div class="auth-error hidden" id="loginErro" role="alert"></div>
+        <div class="auth-success hidden" id="loginSucesso" role="status"></div>
+
+        <button class="btn-primary auth-submit" id="loginSubmit" type="submit">Entrar</button>
+
+        <p class="auth-hint">Ainda não tem conta?
+          <button type="button" class="auth-link" id="irParaCadastro">Criar conta</button>
+        </p>
+      </form>
+
+      <!-- ======================= CADASTRO ======================= -->
+      <form class="auth-form hidden" id="formRegistro" novalidate>
+        <p class="auth-subtitle">
+          Crie sua conta e escolha o perfil. <strong>Alunos</strong> assistem e
+          recebem recomendações; <strong>professores</strong> ainda acessam a
+          lista de usuários da plataforma.
+        </p>
+
+        <label for="registroNome">Nome completo
+          <input type="text" id="registroNome" name="nome" autocomplete="name"
+                 minlength="3" maxlength="80" placeholder="Maria Silva" required>
+        </label>
+
+        <label for="registroEmail">E-mail
+          <input type="email" id="registroEmail" name="email" autocomplete="username"
+                 placeholder="voce@exemplo.com" required>
+        </label>
+
+        <label for="registroSenha">Senha <small>(mínimo 6 caracteres)</small>
+          <input type="password" id="registroSenha" name="senha" autocomplete="new-password"
+                 minlength="6" maxlength="72" placeholder="••••••••" required>
+        </label>
+
+        <fieldset class="auth-perfis">
+          <legend>Eu sou…</legend>
+
+          <label class="perfil-card">
+            <input type="radio" name="tipoUsuario" value="aluno" checked>
+            <span class="perfil-card-body">
+              <strong>🎓 Aluno</strong>
+              <small>Assiste às aulas e recebe recomendações personalizadas</small>
+            </span>
+          </label>
+
+          <label class="perfil-card">
+            <input type="radio" name="tipoUsuario" value="professor">
+            <span class="perfil-card-body">
+              <strong>👩‍🏫 Professor</strong>
+              <small>Publica vídeos e acompanha os usuários da plataforma</small>
+            </span>
+          </label>
+        </fieldset>
+
+        <div class="auth-error hidden" id="registroErro" role="alert"></div>
+        <div class="auth-success hidden" id="registroSucesso" role="status"></div>
+
+        <button class="btn-primary auth-submit" id="registroSubmit" type="submit">Criar conta e entrar</button>
+
+        <p class="auth-hint">Já tem conta?
+          <button type="button" class="auth-link" id="irParaLogin">Entrar</button>
+        </p>
+      </form>
+    </section>
+  </main>
+
+  <!-- Configuração da API (origem do backend) — precisa vir antes do módulo. -->
+  <script src="./config.js"></script>
+  <script type="module" src="./js/login.js"></script>
+</body>
+</html>

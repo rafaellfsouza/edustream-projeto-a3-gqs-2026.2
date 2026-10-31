@@ -37,6 +37,7 @@ import {
 } from "./catalog.js";
 import { API_BASE_URL, getMedia, getVideoStatus, resolveMediaUrl } from "./api.js";
 import { definirParametro } from "./busca.js";
+import { idUsuarioAtual, iniciarUiPerfil } from "./auth.js";
 
 // index.html?video={id} — é assim que a home (home.html) abre um vídeo.
 const PARAMS = new URLSearchParams(window.location.search);
@@ -47,6 +48,8 @@ const CONFIG = {
   // do catálogo da API — que lê do banco (Supabase ou data/videos.json).
   HLS_URL: window.PLAYER_CONFIG?.HLS_URL || "",
   VIDEO_ID: window.PLAYER_CONFIG?.VIDEO_ID || VIDEO_DA_URL || "",
+  // Identidade ANÔNIMA de fallback. Com login ativo (login.html), quem assina
+  // o POST /watch é o usuário real — idUsuarioAtual() vence este valor.
   USER_ID: window.PLAYER_CONFIG?.USER_ID || "demo-user"
 };
 
@@ -84,6 +87,8 @@ const elements = {
   currentQuality: document.querySelector("#currentQuality"),
   relatedVideos: document.querySelector("#relatedVideos"),
   sidebarVideos: document.querySelector("#sidebarVideos"),
+  recomendadosVideos: document.querySelector("#recomendadosVideos"),
+  recomendadosTitle: document.querySelector("#recomendadosTitle"),
   videoTitle: document.querySelector("#videoTitle"),
   views: document.querySelector("#views"),
   date: document.querySelector("#date"),
@@ -116,6 +121,7 @@ function initialize() {
   renderRecommendations(elements.relatedVideos);
   renderSidebar(elements.sidebarVideos);
   ligarBusca();
+  iniciarUiPerfil();
 
   elements.qualitySelect.addEventListener("change", (event) => {
     try {
@@ -208,16 +214,26 @@ async function tocarVideoDoBanco(videoId) {
  * banco, sem nenhuma URL escrita no front.
  */
 async function carregarCatalogo(videoId, { autoSelecionar = false } = {}) {
-  let resultado = { relacionados: [], emAlta: [], apiRespondeu: false };
+  let resultado = { relacionados: [], emAlta: [], recomendados: [], apiRespondeu: false };
 
   try {
     resultado = await atualizarCatalogoDaApi({
       relatedContainer: elements.relatedVideos,
       sidebarContainer: elements.sidebarVideos,
+      recomendadosContainer: elements.recomendadosVideos,
       videoId
     });
   } catch (error) {
     console.info("Catálogo da API indisponível:", error);
+  }
+
+  // O bloco "Recomendados para você" só aparece quando há sessão com
+  // histórico (login.html → POST /watch → GET /recomendacoes/{id}).
+  if (elements.recomendadosTitle) {
+    elements.recomendadosTitle.classList.toggle(
+      "hidden",
+      !(resultado.recomendados ?? []).length
+    );
   }
 
   if (autoSelecionar) {
@@ -351,9 +367,10 @@ function loadVideo(url = "", metadata = null, { manterTentativas = false } = {})
   if (metadata) {
     updateVideoInfo(metadata);
     // POST /watch só para vídeo REAL do banco (id de demonstração poluiria o
-    // /trending com vídeos que não existem).
+    // /trending com vídeos que não existem). Com sessão ativa, a view vai
+    // para o usuário logado — é o que alimenta as recomendações pessoais.
     if (metadata.id && !metadata.demo) {
-      registrarVisualizacao(metadata.id, CONFIG.USER_ID);
+      registrarVisualizacao(metadata.id, idUsuarioAtual() || CONFIG.USER_ID);
     }
   }
 

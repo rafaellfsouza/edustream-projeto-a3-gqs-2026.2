@@ -161,11 +161,29 @@ describe("api.js — tratamento de erro", () => {
     await expect(getTrending()).rejects.toThrow("Failed to fetch");
   });
 
-  test("o corpo não é lido quando a resposta já veio com erro", async () => {
-    const json = jest.fn(async () => ({}));
+  test("o corpo do erro é lido para anexar o detail legível do backend", async () => {
+    // Mudou com a feature de autenticação: as rotas /auth devolvem mensagens
+    // prontas para o usuário em `detail` ("E-mail ou senha incorretos."), e o
+    // login.html as exibe no formulário. Por isso o corpo AGORA é lido.
+    const json = jest.fn(async () => ({ detail: "mensagem do backend" }));
     global.fetch = jest.fn(async () => ({ ok: false, status: 500, json }));
 
-    await expect(getTrending()).rejects.toThrow();
-    expect(json).not.toHaveBeenCalled();
+    await expect(getTrending()).rejects.toMatchObject({
+      status: 500,
+      detail: "mensagem do backend",
+    });
+    expect(json).toHaveBeenCalled();
+  });
+
+  test("corpo de erro ilegível não impede o ApiError (detail fica null)", async () => {
+    const json = jest.fn(async () => {
+      throw new Error("corpo não é JSON");
+    });
+    global.fetch = jest.fn(async () => ({ ok: false, status: 502, json }));
+
+    await expect(getTrending()).rejects.toMatchObject({
+      status: 502,
+      detail: null,
+    });
   });
 });
