@@ -7,6 +7,7 @@ suíte rápida, determinística e independente de serviço no ar.
 from __future__ import annotations
 
 import pytest
+import redis
 
 from app.recommendations import views_store
 
@@ -193,3 +194,73 @@ def test_view_sem_usuario_conta_mas_nao_cria_historico(fake_redis):
 
     assert views_store.contar_visualizacoes("v1") == 1
     assert fake_redis.listas == {}
+
+
+# ---------------------------------------------------------------------------
+# Fallback em memória (Redis fora do ar)
+#
+# Sem Redis, o histórico por usuário — insumo das recomendações pessoais da
+# feature de autenticação — precisa continuar funcionando no processo da API.
+# O dublê levanta RedisError em todas as operações, como um Redis derrubado.
+# ---------------------------------------------------------------------------
+
+class RedisQuebrado:
+    """Dublê que simula o Redis fora do ar (toda operação levanta erro)."""
+
+    def __getattr__(self, nome):
+        def _falha(*args, **kwargs):
+            raise redis.exceptions.ConnectionError("redis indisponível")
+
+        return _falha
+
+
+@pytest.fixture
+def redis_fora(monkeypatch):
+    """Redis quebrado + estado em memória zerado (os dicts são do módulo)."""
+    monkeypatch.setattr(views_store, "_redis_client", RedisQuebrado())
+    with views_store._mem_lock:
+        views_store._mem_totais.clear()
+        views_store._mem_ranking.clear()
+        views_store._mem_historicos.clear()
+    yield
+
+
+def test_fallback_conta_views_sem_redis(redis_fora):
+    assert views_store.registrar_visualizacao("v1") == 1
+    assert views_store.registrar_visualizacao("v1") == 2
+    assert views_store.contar_visualizacoes("v1") == 2
+    assert views_store.contar_visualizacoes("v- nunca-assistido") == 0
+
+
+def test_fallback_guarda_historico_por_usuario(redis_fora):
+    views_store.registrar_visualizacao("v1", user_id="maria")
+    views_store.registrar_visualizacao("v2", user_id="maria")
+
+    # Mais recente primeiro, e isolado por usuário.
+    assert views_store.historico_do_usuario("maria") == ["v2", "v1"]
+    assert views_store.historico_do_usuario("joao") == []
+
+
+def test_fallback_reassistir_nao_duplica_historico(redis_fora):
+    views_store.registrar_visualizacao("v1", user_id="maria")
+    views_store.registrar_visualizacao("v2", user_id="maria")
+    views_store.registrar_visualizacao("v1", user_id="maria")
+
+    assert views_store.historico_do_usuario("maria") == ["v1", "v2"]
+
+
+def test_fallback_historico_tem_tamanho_limitado(redis_fora):
+    for indice in range(views_store.TAMANHO_HISTORICO + 5):
+        views_store.registrar_visualizacao(f"v{indice}", user_id="maria")
+
+    assert len(views_store.historico_do_usuario("maria")) == views_store.TAMANHO_HISTORICO
+
+
+def test_fallback_ranking_mais_assistidos(redis_fora):
+    views_store.registrar_visualizacao("v1")
+    views_store.registrar_visualizacao("v2")
+    views_store.registrar_visualizacao("v2")
+
+    assert views_store.mais_assistidos(10) == [("v2", 2), ("v1", 1)]
+    assert views_store.mais_assistidos(1) == [("v2", 2)]
+    assert views_store.mais_assistidos(0) == []

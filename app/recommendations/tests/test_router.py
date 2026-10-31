@@ -383,7 +383,14 @@ def test_watch_registra_a_primeira_visualizacao(api, views):
     resposta = client.post("/watch", json={"video_id": "v-fra"})
 
     assert resposta.status_code == 200
-    assert resposta.json() == {"video_id": "v-fra", "views": 1, "registrado": True}
+    # `user_id` ecoa a quem a view foi atribuída (usuário do token Bearer ou o
+    # user_id opcional do corpo) — campo acrescentado pela feature de autenticação.
+    assert resposta.json() == {
+        "video_id": "v-fra",
+        "user_id": None,
+        "views": 1,
+        "registrado": True,
+    }
 
 
 def test_watch_acumula_visualizacoes(api, views):

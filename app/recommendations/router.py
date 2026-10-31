@@ -2,9 +2,18 @@
 Rotas de recomendação — contrato #6 da documentação técnica.
 
     GET  /videos/{video_id}/relacionados   vídeos similares (Jaccard sobre tags)
+    GET  /recomendacoes/me                 recomendações do usuário LOGADO
     GET  /recomendacoes/{user_id}          recomendações personalizadas
     GET  /trending                         mais assistidos
     POST /watch                            registra uma visualização
+
+Integração com a autenticação (app/auth):
+    * POST /watch aceita o cabeçalho `Authorization: Bearer <token>` — com
+      sessão ativa, a visualização é atribuída ao usuário logado (mesmo que o
+      corpo traga outro user_id), alimentando o histórico que gera as
+      recomendações pessoais.
+    * GET /recomendacoes/me devolve as recomendações do dono do token — o
+      front não precisa nem conhecer o user_id.
 
 Antes deste módulo o player (js/api.js) chamava essas quatro rotas e recebia
 404 — a sidebar e os "relacionados" só funcionavam com o DEMO_VIDEOS fixo do
@@ -22,9 +31,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from app.auth.dependencies import usuario_atual, usuario_atual_opcional
 from app.database.videos import buscar_video, listar_videos
 from app.media import base_publica_s3, master_existe, origem_midia
 from app.recommendations import views_store
@@ -190,16 +200,16 @@ def videos_relacionados(
 
 
 # ---------------------------------------------------------------------------
-# GET /recomendacoes/{user_id}
+# GET /recomendacoes/me e GET /recomendacoes/{user_id}
 # ---------------------------------------------------------------------------
 
-@router.get("/recomendacoes/{user_id}")
-def recomendacoes_personalizadas(
-    request: Request,
-    user_id: str,
-    limite: int = Query(default=5, ge=1, le=50),
-):
-    """Recomenda a partir das tags do que o usuário já assistiu."""
+def _resposta_recomendacoes(request: Request, user_id: str, limite: int) -> dict:
+    """Lógica única de recomendação pessoal, compartilhada pelas duas rotas.
+
+    O "perfil" do usuário é a união das tags do que ele já assistiu
+    (histórico em Redis alimentado pelo POST /watch); o motor de Jaccard
+    ordena o catálogo pronto por similaridade com esse perfil.
+    """
     historico = views_store.historico_do_usuario(user_id)
 
     if not historico:
@@ -215,7 +225,6 @@ def recomendacoes_personalizadas(
         if video is not None:
             assistidos.append(video)
 
-    # O "perfil" do usuário é a união das tags do que ele assistiu.
     tags_do_usuario: list[str] = []
     for video in assistidos:
         tags_do_usuario.extend(normalizar_tags(video.get("tags")))
@@ -238,6 +247,29 @@ def recomendacoes_personalizadas(
             for video in sugeridos[:limite]
         ],
     }
+
+
+# IMPORTANTE: registrada ANTES de /recomendacoes/{user_id} — no FastAPI a
+# primeira rota que casa vence, e "me" seria engolido pelo parâmetro de caminho.
+@router.get("/recomendacoes/me")
+def recomendacoes_da_sessao(
+    request: Request,
+    limite: int = Query(default=5, ge=1, le=50),
+    usuario: dict = Depends(usuario_atual),
+):
+    """Recomendações do usuário LOGADO (token Bearer) — o front não precisa
+    conhecer o user_id: basta enviar o Authorization que a sessão devolve."""
+    return _resposta_recomendacoes(request, usuario["usuario_id"], limite)
+
+
+@router.get("/recomendacoes/{user_id}")
+def recomendacoes_personalizadas(
+    request: Request,
+    user_id: str,
+    limite: int = Query(default=5, ge=1, le=50),
+):
+    """Recomenda a partir das tags do que o usuário já assistiu."""
+    return _resposta_recomendacoes(request, user_id, limite)
 
 
 # ---------------------------------------------------------------------------
@@ -335,10 +367,19 @@ def catalogo_detalhe(request: Request, video_id: str):
 # ---------------------------------------------------------------------------
 
 @router.post("/watch")
-def registrar_watch(payload: WatchRequest):
-    """Registra uma visualização (alimenta /trending e /recomendacoes)."""
+def registrar_watch(payload: WatchRequest, request: Request):
+    """Registra uma visualização (alimenta /trending e /recomendacoes).
+
+    Com `Authorization: Bearer <token>` (usuário logado na plataforma), a view
+    é atribuída ao DONO DO TOKEN — é isso que liga o login às recomendações
+    pessoais. Sem token, vale o `user_id` opcional do corpo (comportamento
+    antigo, preservado para o modo anônimo/demo).
+    """
+    usuario = usuario_atual_opcional(request)
+    user_id = usuario["usuario_id"] if usuario else payload.user_id
+
     try:
-        views = views_store.registrar_visualizacao(payload.video_id, payload.user_id)
+        views = views_store.registrar_visualizacao(payload.video_id, user_id)
     except Exception as exc:  # Redis fora do ar não pode derrubar o player
         logger.exception("Falha ao registrar visualização no Redis")
         raise HTTPException(
@@ -347,6 +388,7 @@ def registrar_watch(payload: WatchRequest):
 
     return {
         "video_id": payload.video_id,
+        "user_id": user_id,
         "views": views,
         "registrado": True,
     }
