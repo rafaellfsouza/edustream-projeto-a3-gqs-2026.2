@@ -147,9 +147,9 @@ pytest -v
 
 ## Supabase (banco compartilhado do time)
 
-O projeto Supabase já existe — com ele configurado, **todo o time e o player passam a ver o mesmo catálogo** (o fallback local `data/videos.json` se desliga sozinho). Uma vez por máquina:
+Com o Supabase configurado, **todo o time e o player passam a ver o mesmo catálogo e as mesmas contas de usuário** (os fallbacks locais `data/videos.json` e `data/usuarios.json` se desligam sozinhos). Uma vez por máquina:
 
-1. **Criar a tabela**: painel do Supabase → **SQL Editor** → cole e execute o conteúdo de [`supabase/schema.sql`](supabase/schema.sql) (idempotente, cria a tabela `videos` + índices).
+1. **Criar as tabelas**: painel do Supabase → **SQL Editor** → cole e execute o conteúdo de [`supabase/schema.sql`](supabase/schema.sql) (idempotente: cria `videos` **e** `usuarios` + índices — a segunda é a do login de alunos/professores).
 2. **Copiar as credenciais**: painel → **Settings → API** → `Project URL` e a chave (`anon public` serve para dev) → colar no `.env`:
    ```
    SUPABASE_URL=https://xxxx.supabase.co
@@ -160,10 +160,28 @@ O projeto Supabase já existe — com ele configurado, **todo o time e o player 
    ```bash
    python scripts/verificar_supabase.py
    ```
-   O script valida credenciais, existência da tabela e faz insert → select → delete de teste. Se a tabela não existir, ele manda rodar o `schema.sql`.
+   O script valida as credenciais e faz insert → select → delete de teste nas DUAS tabelas (`videos` e `usuarios`). Se alguma não existir, ele manda rodar o `schema.sql`.
 4. **Reiniciar** API e worker Celery para valerem as novas variáveis.
 
-> Sem credenciais no `.env`, tudo continua funcionando localmente (banco JSON) — inclusive os testes e a demo.
+> Sem credenciais no `.env`, tudo continua funcionando localmente (banco JSON) — inclusive os testes, o login e a demo.
+
+### Supabase Storage (opcional — mídia HLS no bucket)
+
+Por padrão os vídeos transcodificados ficam no **disco da API** (`videos/`). Para guardá-los no bucket do Supabase (útil quando API e worker rodam em máquinas diferentes, ou para o player tocar de qualquer origem):
+
+1. Painel → **Storage → Buckets** → crie um bucket público (ex.: `streaming`, **Public bucket ON**).
+2. Painel → **Storage → Settings → S3 Access Keys** → gere um par de chaves.
+3. Preencha no `.env`:
+   ```
+   ENABLE_S3=true
+   S3_BUCKET=streaming
+   AWS_ACCESS_KEY_ID=<access key do passo 2>
+   AWS_SECRET_ACCESS_KEY=<secret key do passo 2>
+   AWS_REGION=<região mostrada na página S3>
+   AWS_ENDPOINT_URL=https://xxxx.supabase.co/storage/v1/s3
+   # S3_PUBLIC_URL pode ficar vazio: a API deriva de SUPABASE_URL + S3_BUCKET.
+   ```
+4. Teste com `python scripts/teste_storage.py` (smoke test: sobe um arquivo `.txt` no bucket, confirma a leitura e imprime a URL pública) e reinicie a stack. O worker passa a publicar o HLS no bucket e o catálogo devolve `hls_url` apontando para lá.
 
 ## Autenticação — login de alunos e professores
 

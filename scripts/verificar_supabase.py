@@ -1,36 +1,36 @@
-"""Smoke test do armazenamento S3 / MinIO / Supabase Storage.
+"""Smoke test do BANCO Supabase (Postgres) — tabela `videos` + `usuarios`.
 
 Uso (na raiz do repositório, com o venv ativado):
+    python scripts/verificar_supabase.py
+
+O que ele faz:
+    1. lê o .env da raiz e confere SUPABASE_URL / SUPABASE_KEY;
+    2. conecta com o supabase-py (o MESMO client que o backend usa);
+    3. em `videos`:   insert → select → delete de um registro de teste;
+    4. em `usuarios`: insert → select → delete de uma conta de teste
+       (é a tabela da feature de autenticação — app/auth/store.py).
+
+Sai com código 0 se tudo passar. Se alguma tabela não existir, a mensagem
+manda rodar o supabase/schema.sql no SQL Editor do painel.
+
+Para o smoke test do STORAGE (bucket de mídia HLS), o script é outro:
     python scripts/teste_storage.py
-    python scripts/teste_storage.py --debug   # log HTTP completo do botocore
-
-Ou dentro do container da API (não precisa de venv):
-    docker compose exec api python scripts/teste_storage.py
-
-Lê o .env da raiz (se existir), investiga o bucket (head/list), sobe um
-arquivo de teste, confirma que ele existe e imprime a URL pública.
-Sai com código 0 se tudo passar.
 """
 from __future__ import annotations
 
-import os
 import sys
-import tempfile
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))  # permite rodar de qualquer cwd
 
-DEBUG = "--debug" in sys.argv[1:]
-if DEBUG:
-    import logging
-
-    logging.basicConfig(stream=sys.stderr)
-    logging.getLogger("botocore").setLevel(logging.DEBUG)
-
 
 def carregar_dotenv() -> None:
     """Injeta o .env da raiz no os.environ (variáveis já definidas vencem)."""
+    import os
+
     dotenv = REPO_ROOT / ".env"
     if not dotenv.is_file():
         return
@@ -42,94 +42,129 @@ def carregar_dotenv() -> None:
         os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
 
 
-def descrever_erro(exc: Exception) -> int | None:
-    """Extrai status HTTP + dicas de um erro do boto3.
+def dica_de_erro(exc: Exception) -> str:
+    """Traduz os erros comuns do PostgREST em instrução acionável."""
+    mensagem = str(exc).lower()
+    if "could not find the table" in mensagem or "does not exist" in mensagem:
+        return (
+            "A tabela não existe no projeto. Rode o conteúdo de "
+            "supabase/schema.sql no painel do Supabase → SQL Editor → New "
+            "query → Run (cria `videos` e `usuarios`, é idempotente)."
+        )
+    if "invalid api key" in mensagem or "401" in mensagem or "403" in mensagem:
+        return (
+            "Credenciais recusadas. Confira SUPABASE_KEY no .env — a chave "
+            "`anon public` está em Settings → API no painel."
+        )
+    if "name or service not known" in mensagem or "getaddrinfo" in mensagem:
+        return (
+            "Não resolveu o host — confira SUPABASE_URL no .env "
+            "(formato https://xxxx.supabase.co, sem barra no final)."
+        )
+    return ""
 
-    O Supabase responde erros do endpoint S3 em JSON (não no XML da AWS),
-    então Code/Message vêm vazios ('An error occurred ()'); o status HTTP
-    é a pista que sobra.
-    """
-    resp = getattr(exc, "response", None) or {}
-    status = (resp.get("ResponseMetadata") or {}).get("HTTPStatusCode")
-    err = resp.get("Error") or {}
-    print(f"[ERRO] HTTP {status} | code={err.get('Code')!r} | "
-          f"msg={err.get('Message')!r}")
-    if status == 404:
-        print("  -> Provável: o bucket NÃO existe. Crie em "
-              "Storage -> Buckets (nome 'streaming', Public bucket ON).")
-    elif status == 403:
-        print("  -> Provável: credenciais ou região erradas. Gere chaves NOVAS "
-              "em Storage -> S3 e use exatamente a região mostrada nessa página "
-              "no AWS_REGION.")
-    return status
+
+def checar_tabela_videos(client) -> bool:
+    """insert → select → delete na tabela `videos` (contrato #2)."""
+    video_id = f"smoke-{uuid.uuid4().hex[:8]}"
+    registro = {
+        "video_id": video_id,
+        "titulo": "[smoke] registro de teste — pode apagar",
+        "descricao": "Criado por scripts/verificar_supabase.py; removido em seguida.",
+        "tags": "smoke,teste",
+        "categoria": "QA",
+        "autor": "verificar_supabase.py",
+        "status": "pending",
+    }
+
+    try:
+        client.table("videos").insert(registro).execute()
+        lido = client.table("videos").select("*").eq("video_id", video_id).execute()
+        if not lido.data:
+            print("[ERRO] videos: insert ok, mas o select não devolveu a linha.")
+            return False
+        client.table("videos").delete().eq("video_id", video_id).execute()
+        print("[OK] videos: insert → select → delete funcionaram.")
+        return True
+    except Exception as exc:
+        print(f"[ERRO] videos: {exc}")
+        dica = dica_de_erro(exc)
+        if dica:
+            print(f"  -> {dica}")
+        return False
+
+
+def checar_tabela_usuarios(client) -> bool:
+    """insert → select → delete na tabela `usuarios` (app/auth/store.py)."""
+    sufixo = uuid.uuid4().hex[:10]
+    registro = {
+        "usuario_id": str(uuid.uuid4()),
+        "nome": "Smoke Test",
+        "email": f"smoke-{sufixo}@verificar.local",
+        "senha_hash": "pbkdf2_sha256$1$smoke$smoke",  # hash fake: nunca valida
+        "tipo_usuario": "aluno",
+        "criado_em": datetime.now(timezone.utc).isoformat(),
+    }
+
+    try:
+        client.table("usuarios").insert(registro).execute()
+        lido = (
+            client.table("usuarios").select("*")
+            .eq("usuario_id", registro["usuario_id"]).execute()
+        )
+        if not lido.data:
+            print("[ERRO] usuarios: insert ok, mas o select não devolveu a linha.")
+            return False
+        client.table("usuarios").delete().eq(
+            "usuario_id", registro["usuario_id"]
+        ).execute()
+        print("[OK] usuarios: insert → select → delete funcionaram "
+              "(contas do login podem usar o Supabase).")
+        return True
+    except Exception as exc:
+        print(f"[ERRO] usuarios: {exc}")
+        dica = dica_de_erro(exc)
+        if dica:
+            print(f"  -> {dica}")
+        return False
 
 
 def main() -> int:
     carregar_dotenv()
 
-    from app.transcoding.errors import StorageError
-    from app.transcoding.storage import VideoStorage
+    import os
 
-    bucket = os.getenv("S3_BUCKET")
-    if not bucket:
-        print("[ERRO] S3_BUCKET não configurado — confira o .env "
-              "(veja docs/storage-supabase.md).")
-        return 1
-    if os.getenv("ENABLE_S3", "").strip().lower() not in {"1", "true", "yes", "sim"}:
-        print("[AVISO] ENABLE_S3 não está 'true' — o worker NÃO vai subir "
-              "vídeos após transcodificar.")
+    url = (os.getenv("SUPABASE_URL") or "").strip()
+    key = (os.getenv("SUPABASE_KEY") or "").strip()
 
-    endpoint = os.getenv("AWS_ENDPOINT_URL") or "(AWS real)"
-    print(f"[INFO] bucket={bucket!r} regiao={os.getenv('AWS_REGION')!r} "
-          f"endpoint={endpoint}")
-    if endpoint != "(AWS real)" and not os.getenv("S3_PUBLIC_URL"):
-        print("[AVISO] S3_PUBLIC_URL não configurado — mesmo que o upload "
-              "funcione, a URL gerada não abre no player.")
-
-    try:
-        storage = VideoStorage.from_env()
-    except StorageError as exc:
-        print(f"[ERRO] Não foi possível criar o storage: {exc}")
+    if not url or not key:
+        print("[ERRO] SUPABASE_URL e/ou SUPABASE_KEY vazias no .env.")
+        print("  -> Copie .env.example para .env e preencha com os dados do")
+        print("     painel do Supabase (Settings → API). Sem elas o projeto")
+        print("     funciona no banco JSON local (data/) — e este smoke test")
+        print("     não tem o que verificar.")
         return 1
 
-    # -- sondagens baratas antes do upload ---------------------------------
-    cliente = storage._client  # interno de propósito: sondagem de diagnóstico
+    print(f"[INFO] Testando conexão com {url}")
+
     try:
-        cliente.head_bucket(Bucket=bucket)
-        print("[OK] head_bucket: o bucket existe e as credenciais respondem.")
+        from app.database.client import get_client
+
+        client = get_client()
     except Exception as exc:
-        print("[ERRO] head_bucket falhou:")
-        descrever_erro(exc)
-        print("Rode com --debug para ver o corpo cru da resposta:")
-        print("    python scripts/teste_storage.py --debug")
+        print(f"[ERRO] Não foi possível criar o client: {exc}")
         return 1
 
-    # -- upload de teste -----------------------------------------------------
-    chave = "uploads/smoke/smoke.txt"
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tmp:
-        tmp.write("ok supabase")
-        caminho = tmp.name
+    ok_videos = checar_tabela_videos(client)
+    ok_usuarios = checar_tabela_usuarios(client)
 
-    try:
-        storage.upload_arquivo(caminho, chave)
-        print(f"[OK] Upload feito no bucket '{bucket}' com a chave '{chave}'.")
-    except Exception as exc:
-        print("[ERRO] Upload falhou:")
-        descrever_erro(exc)
-        print("Rode com --debug para ver o corpo cru da resposta:")
-        print("    python scripts/teste_storage.py --debug")
-        return 1
-    finally:
-        os.remove(caminho)
+    if ok_videos and ok_usuarios:
+        print("\n[TUDO OK] O backend vai usar o Supabase (vídeos + contas de")
+        print("usuário). Reinicie API e worker Celery se estavam no ar.")
+        return 0
 
-    existe = storage.existe(chave)
-    print(f"[{'OK' if existe else 'ERRO'}] existe() -> {existe}")
-
-    url = storage.url_publica(chave)
-    print(f"[INFO] URL pública: {url}")
-    if os.getenv("S3_PUBLIC_URL"):
-        print("[INFO] Abra essa URL no navegador: deve aparecer 'ok supabase'.")
-    return 0 if existe else 1
+    print("\n[FALHOU] Corrija os pontos acima e rode de novo.")
+    return 1
 
 
 if __name__ == "__main__":
